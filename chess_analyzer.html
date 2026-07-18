@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChessLens — Análise de Jogadores</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{--bg:#12141a;--card:#1b1f29;--card2:#222736;--txt:#e8eaf0;--mut:#8b93a7;--acc:#4fc37f;--bad:#e35d5d;--warn:#e3b34f;--line:#2c3242;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px}
+header h1{font-size:1.7rem}header h1 span{color:var(--acc)}
+header p{color:var(--mut);margin:4px 0 20px;font-size:.95rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:18px}
+.card h2{font-size:1.05rem;margin-bottom:12px;color:var(--acc)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:block;font-size:.8rem;color:var(--mut);margin-bottom:4px}
+input,select,button{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:.95rem}
+input:focus,select:focus{outline:1px solid var(--acc)}
+button{cursor:pointer}
+button.primary{background:var(--acc);color:#0c1310;font-weight:600;border:none}
+button.primary:hover{filter:brightness(1.1)}
+#status{color:var(--warn);font-size:.9rem;margin-top:10px;min-height:1.2em}
+.grid{display:grid;gap:14px}
+.grid.c4{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.grid.c2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.stat{background:var(--card2);border-radius:10px;padding:14px;text-align:center}
+.stat .v{font-size:1.5rem;font-weight:700}
+.stat .l{font-size:.78rem;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600;font-size:.78rem;text-transform:uppercase}
+.pct{font-weight:700}
+.good{color:var(--acc)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--acc)}
+a{color:#6ea8ff;text-decoration:none}a:hover{text-decoration:underline}
+.hide{display:none}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+ul.plain{list-style:none}ul.plain li{padding:6px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+canvas{max-height:280px}
+/* tabuleiro */
+#board{display:grid;grid-template-columns:repeat(8,1fr);width:min(440px,92vw);aspect-ratio:1;border:3px solid var(--line);border-radius:6px;overflow:hidden;user-select:none}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(24px,5.4vw,38px);cursor:pointer;position:relative}
+.sq.light{background:#e9edf5}.sq.dark{background:#7a8aa8}
+.sq.sel{outline:3px solid var(--warn);outline-offset:-3px}
+.sq.dot::after{content:'';position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(30,180,110,.55)}
+.wp{color:#fdfdfd;text-shadow:0 0 3px #000}
+.bp{color:#15161c;text-shadow:0 0 3px #fff3}
+#botinfo{font-size:.9rem;color:var(--mut);margin:8px 0}
+#moves{font-family:monospace;font-size:.85rem;color:var(--mut);max-height:120px;overflow:auto;margin-top:8px}
+footer{color:var(--mut);font-size:.78rem;text-align:center;padding:18px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Chess<span>Lens</span> ♞</h1>
+  <p>Análise completa de jogadores — aberturas, armadilhas, pontos fracos e um bot com a sua força. Chess.com, Lichess ou PGN (FIDE/OTB).</p>
+</header>
+
+<div class="card">
+  <h2>Analisar jogador</h2>
+  <div class="row">
+    <div><label>Plataforma</label>
+      <select id="plat">
+        <option value="chesscom">Chess.com</option>
+        <option value="lichess">Lichess</option>
+        <option value="pgn">Arquivo PGN (FIDE/OTB)</option>
+      </select></div>
+    <div><label>Username (ou nome no PGN)</label><input id="user" placeholder="ex.: hikaru"></div>
+    <div><label>Partidas</label>
+      <select id="maxg"><option>100</option><option selected>200</option><option>400</option></select></div>
+    <div id="pgnbox" class="hide"><label>Arquivo .pgn</label><input type="file" id="pgnfile" accept=".pgn,.txt"></div>
+    <div><button class="primary" id="go">Analisar</button></div>
+  </div>
+  <div id="status"></div>
+</div>
+
+<div id="results" class="hide">
+  <div class="card"><h2>Visão geral</h2>
+    <div class="grid c4" id="overview"></div>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Resultados</h2><canvas id="chWDL"></canvas></div>
+    <div class="card"><h2>Evolução de rating</h2><canvas id="chRating"></canvas></div>
+  </div>
+
+  <div class="card"><h2>Desempenho por cor e ritmo</h2><div class="two">
+    <div id="colorPerf"></div><div id="tcPerf"></div>
+  </div></div>
+
+  <div class="card"><h2>Aberturas com Brancas</h2><div id="opWhite"></div></div>
+  <div class="card"><h2>Defesas com Pretas</h2><div id="opBlack"></div></div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Melhores linhas 💪</h2><div id="bestOp"></div></div>
+    <div class="card"><h2>Piores linhas ⚠️</h2><div id="worstOp"></div></div>
+  </div>
+
+  <div class="card"><h2>Linhas em que mais perde</h2><div id="loseLines"></div></div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Armadilhas em que cai 🪤</h2><div id="trapFall"></div></div>
+    <div class="card"><h2>Armadilhas que aplica 🎯</h2><div id="trapUse"></div></div>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Como perde</h2><canvas id="chLoss"></canvas></div>
+    <div class="card"><h2>Derrotas rápidas (≤ 12 lances)</h2><div id="miniatures"></div></div>
+  </div>
+
+  <div class="card"><h2>Diagnóstico</h2><div class="two">
+    <div><h3 class="good" style="margin-bottom:8px">Pontos fortes</h3><ul class="plain" id="strengths"></ul></div>
+    <div><h3 class="bad" style="margin-bottom:8px">Pontos fracos</h3><ul class="plain" id="weaknesses"></ul></div>
+  </div></div>
+
+  <div class="card"><h2>Jogue contra o clone 🤖</h2>
+    <div id="botinfo"></div>
+    <div class="row" style="margin-bottom:12px">
+      <div><label>Força (Elo aprox.)</label><input type="range" id="botElo" min="400" max="2800" step="50" style="width:180px"><span id="botEloV" style="margin-left:8px"></span></div>
+      <div><label>Suas peças</label><select id="botColor"><option value="w">Brancas</option><option value="b">Pretas</option></select></div>
+      <div><button class="primary" id="botStart">Nova partida</button></div>
+    </div>
+    <div id="board"></div>
+    <div id="botstatus" style="margin-top:8px;font-size:.95rem"></div>
+    <div id="moves"></div>
+  </div>
+</div>
+
+<footer>ChessLens — 100% no navegador, APIs públicas do Chess.com e Lichess. Inspirado no ChessStalker. Sem contas, sem custos.</footer>
+</div>
+
+<script>
+//JS-START
+const $=id=>document.getElementById(id);
+const norm=s=>s.replace(/[+#?!]/g,'');
+
+/* ---------- Banco de armadilhas ---------- */
+const TRAPS=[
+ {name:"Mate Pastor",side:'w',seq:["e4","e5","Qh5"]},
+ {name:"Mate Pastor (Bc4/Qf3)",side:'w',seq:["e4","e5","Bc4","Nc6","Qh5"]},
+ {name:"Fried Liver",side:'w',seq:["e4","e5","Nf3","Nc6","Bc4","Nf6","Ng5","d5","exd5","Nxd5","Nxf7"]},
+ {name:"Mate de Légal",side:'w',seq:["e4","e5","Nf3","Nc6","Bc4","d6","Nc3","Bg4","Nxe5"]},
+ {name:"Blackburne Shilling",side:'b',seq:["e4","e5","Nf3","Nc6","Bc4","Nd4","Nxe5","Qg5"]},
+ {name:"Gambito Stafford",side:'b',seq:["e4","e5","Nf3","Nf6","Nxe5","Nc6","Nxc6","dxc6"]},
+ {name:"Gambito Englund",side:'b',seq:["d4","e5","dxe5","Nc6","Nf3","Qe7","Bf4","Qb4"]},
+ {name:"Armadilha de Lasker (Albin)",side:'b',seq:["d4","d5","c4","e5","dxe5","d4","e3","Bb4","Bd2","dxe3"]},
+ {name:"Armadilha do Elefante (GDR)",side:'b',seq:["d4","d5","c4","e6","Nc3","Nf6","Bg5","Nbd7","cxd5","exd5","Nxd5","Nxd5"]},
+ {name:"Fishing Pole (Ruy López)",side:'b',seq:["e4","e5","Nf3","Nc6","Bb5","Nf6","O-O","Ng4"]},
+];
+
+/* ---------- Parsing ---------- */
+function movesFromPgn(pgn){
+  const parts=pgn.split(/\n\s*\n/);
+  let text=parts.length>1?parts.slice(1).join(' '):pgn;
+  text=text.replace(/\{[^}]*\}/g,' ').replace(/\([^)]*\)/g,' ')
+           .replace(/\$\d+/g,' ').replace(/\d+\.+/g,' ')
+           .replace(/(1-0|0-1|1\/2-1\/2|\*)/g,' ');
+  return text.split(/\s+/).filter(t=>t&&t!=='...');
+}
+function hdr(pgn,k){const m=pgn.match(new RegExp('\\['+k+' "([^"]*)"'));return m?m[1]:null;}
+function famName(n){
+  if(!n)return"Desconhecida";
+  let f=n.split(':')[0].split(',')[0];
+  f=f.replace(/\s+\d.*$/,'').trim();
+  return f||"Desconhecida";
+}
+function ecoUrlName(url){
+  if(!url)return null;
+  const slug=url.split('/').pop().replace(/-/g,' ');
+  return slug.replace(/\s+\d.*$/,'').trim();
+}
+
+/* ---------- Coleta ---------- */
+async function fetchChessCom(user,maxg,st){
+  const r=await fetch(`https://api.chess.com/pub/player/${user}/games/archives`);
+  if(!r.ok)throw new Error("Usuário não encontrado no Chess.com");
+  const months=(await r.json()).archives.reverse();
+  const recs=[];
+  for(const m of months){
+    if(recs.length>=maxg)break;
+    st(`Baixando ${m.slice(-7)}… (${recs.length} partidas)`);
+    const gs=(await (await fetch(m)).json()).games||[];
+    for(const g of gs.reverse()){
+      if(recs.length>=maxg)break;
+      if(g.rules!=='chess'||!g.pgn)continue;
+      const isW=g.white.username.toLowerCase()===user.toLowerCase();
+      const me=isW?g.white:g.black, op=isW?g.black:g.white;
+      let res='d';
+      if(me.result==='win')res='w';
+      else if(['checkmated','timeout','resigned','abandoned','lose'].includes(me.result))res='l';
+      recs.push({color:isW?'w':'b',result:res,myRating:me.rating,opRating:op.rating,
+        tc:g.time_class,ts:g.end_time*1000,url:g.url,
+        moves:movesFromPgn(g.pgn),
+        opening:ecoUrlName(hdr(g.pgn,'ECOUrl'))||hdr(g.pgn,'ECO')||'Desconhecida',
+        term:me.result==='win'?op.result:me.result});
+    }
+  }
+  return recs;
+}
+async function fetchLichess(user,maxg,st){
+  st("Baixando partidas do Lichess…");
+  const r=await fetch(`https://lichess.org/api/games/user/${user}?max=${maxg}&opening=true`,
+    {headers:{Accept:'application/x-ndjson'}});
+  if(!r.ok)throw new Error("Usuário não encontrado no Lichess");
+  const lines=(await r.text()).trim().split('\n').filter(Boolean);
+  const recs=[];
+  for(const ln of lines){
+    let g;try{g=JSON.parse(ln)}catch(e){continue}
+    if(g.variant!=='standard'||!g.moves)continue;
+    const wn=(g.players.white.user?.name||'').toLowerCase();
+    const isW=wn===user.toLowerCase();
+    const me=isW?g.players.white:g.players.black;
+    let res='d';
+    if(g.winner)res=(g.winner==='white')===isW?'w':'l';
+    const term={mate:'checkmated',resign:'resigned',outoftime:'timeout',timeout:'abandoned'}[g.status]||g.status;
+    recs.push({color:isW?'w':'b',result:res,myRating:me.rating||0,opRating:(isW?g.players.black:g.players.white).rating||0,
+      tc:g.speed,ts:g.createdAt,url:`https://lichess.org/${g.id}`,
+      moves:g.moves.split(' '),opening:g.opening?g.opening.name:'Desconhecida',
+      term:res==='l'?term:(res==='w'?'win':'draw')});
+  }
+  return recs;
+}
+function parsePgnFile(text,user){
+  const games=text.split(/\n(?=\[Event )/).filter(s=>s.includes('['));
+  const u=user.toLowerCase(); const recs=[];
+  for(const p of games){
+    const w=(hdr(p,'White')||'').toLowerCase(), b=(hdr(p,'Black')||'').toLowerCase();
+    let isW; if(w.includes(u))isW=true; else if(b.includes(u))isW=false; else continue;
+    const R=hdr(p,'Result')||'*'; let res='d';
+    if(R==='1-0')res=isW?'w':'l'; else if(R==='0-1')res=isW?'l':'w'; else if(R==='*')continue;
+    recs.push({color:isW?'w':'b',result:res,
+      myRating:+(hdr(p,isW?'WhiteElo':'BlackElo')||0),opRating:+(hdr(p,isW?'BlackElo':'WhiteElo')||0),
+      tc:'clássico',ts:Date.parse(hdr(p,'Date')?.replace(/\./g,'-')||'')||0,url:null,
+      moves:movesFromPgn(p),opening:hdr(p,'Opening')||hdr(p,'ECO')||'Desconhecida',
+      term:res==='l'?'perdeu':'—'});
+  }
+  return recs;
+}
+
+/* ---------- Estatísticas ---------- */
+let charts={};
+function chart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);}
+const pctc=p=>p>=55?'good':(p<45?'bad':'warn');
+function wdl(arr){const w=arr.filter(g=>g.result==='w').length,l=arr.filter(g=>g.result==='l').length,d=arr.length-w-l;
+  return{w,d,l,n:arr.length,p:arr.length?Math.round(100*(w+d*0.5)/arr.length):0};}
+
+function openingTable(recs,color){
+  const map={};
+  recs.filter(g=>g.color===color).forEach(g=>{
+    const f=famName(g.opening);(map[f]=map[f]||[]).push(g);});
+  const rows=Object.entries(map).map(([k,v])=>({op:k,...wdl(v)})).sort((a,b)=>b.n-a.n);
+  return rows;
+}
+function tbl(rows,linkRow){
+  if(!rows.length)return'<p style="color:var(--mut)">Sem dados suficientes.</p>';
+  let h='<table><tr><th>Abertura</th><th>Jogos</th><th>V / E / D</th><th>Aproveitamento</th></tr>';
+  for(const r of rows)h+=`<tr><td>${r.op}</td><td>${r.n}</td><td>${r.w} / ${r.d} / ${r.l}</td>
+    <td><span class="pct ${pctc(r.p)}">${r.p}%</span><div class="bar"><i style="width:${r.p}%"></i></div></td></tr>`;
+  return h+'</table>';
+}
+
+function analyze(recs,user){
+  if(!recs.length)throw new Error("Nenhuma partida padrão encontrada para esse jogador.");
+  recs.sort((a,b)=>a.ts-b.ts);
+  const all=wdl(recs);
+  const rated=recs.filter(g=>g.myRating>0);
+  const curRating=rated.length?rated[rated.length-1].myRating:0;
+  const recent=rated.slice(-30);
+  const estElo=recent.length?Math.round(recent.reduce((s,g)=>s+g.myRating,0)/recent.length):1200;
+
+  // ritmo
+  const tcs={};recs.forEach(g=>{(tcs[g.tc]=tcs[g.tc]||[]).push(g)});
+  const favTc=Object.entries(tcs).sort((a,b)=>b[1].length-a[1].length)[0][0];
+
+  // overview
+  $('overview').innerHTML=[
+    ['Partidas',all.n],['Vitórias',all.w+` <small style="color:var(--mut)">(${Math.round(100*all.w/all.n)}%)</small>`],
+    ['Empates / Derrotas',all.d+' / '+all.l],['Aproveitamento',`<span class="${pctc(all.p)}">${all.p}%</span>`],
+    ['Rating atual',curRating||'—'],['Elo médio recente',estElo],
+    ['Ritmo favorito',favTc],['Rival médio',rated.length?Math.round(rated.reduce((s,g)=>s+g.opRating,0)/rated.length):'—']
+  ].map(([l,v])=>`<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+
+  chart('chWDL',{type:'doughnut',data:{labels:['Vitórias','Empates','Derrotas'],
+    datasets:[{data:[all.w,all.d,all.l],backgroundColor:['#4fc37f','#8b93a7','#e35d5d'],borderWidth:0}]},
+    options:{plugins:{legend:{labels:{color:'#e8eaf0'}}}}});
+
+  const rpts=rated.map(g=>({x:new Date(g.ts).toLocaleDateString('pt-BR'),y:g.myRating}));
+  chart('chRating',{type:'line',data:{labels:rpts.map(p=>p.x),
+    datasets:[{data:rpts.map(p=>p.y),borderColor:'#4fc37f',pointRadius:0,tension:.3,fill:false}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8b93a7',maxTicksLimit:8}},y:{ticks:{color:'#8b93a7'}}}}});
+
+  // cor
+  const wW=wdl(recs.filter(g=>g.color==='w')),wB=wdl(recs.filter(g=>g.color==='b'));
+  $('colorPerf').innerHTML=`<table><tr><th>Cor</th><th>Jogos</th><th>V/E/D</th><th>%</th></tr>
+   <tr><td>♔ Brancas</td><td>${wW.n}</td><td>${wW.w}/${wW.d}/${wW.l}</td><td class="pct ${pctc(wW.p)}">${wW.p}%</td></tr>
+   <tr><td>♚ Pretas</td><td>${wB.n}</td><td>${wB.w}/${wB.d}/${wB.l}</td><td class="pct ${pctc(wB.p)}">${wB.p}%</td></tr></table>`;
+  let tch='<table><tr><th>Ritmo</th><th>Jogos</th><th>%</th></tr>';
+  const tcRows=Object.entries(tcs).map(([k,v])=>({k,...wdl(v)})).sort((a,b)=>b.n-a.n);
+  tcRows.forEach(r=>tch+=`<tr><td>${r.k}</td><td>${r.n}</td><td class="pct ${pctc(r.p)}">${r.p}%</td></tr>`);
+  $('tcPerf').innerHTML=tch+'</table>';
+
+  // aberturas
+  const opW=openingTable(recs,'w'),opB=openingTable(recs,'b');
+  $('opWhite').innerHTML=tbl(opW.slice(0,10));
+  $('opBlack').innerHTML=tbl(opB.slice(0,10));
+  const sig=[...opW,...opB].filter(r=>r.n>=5);
+  const best=[...sig].sort((a,b)=>b.p-a.p).slice(0,3);
+  const worst=[...sig].sort((a,b)=>a.p-b.p).slice(0,3);
+  $('bestOp').innerHTML=tbl(best);
+  $('worstOp').innerHTML=tbl(worst);
+
+  // linhas que mais perde
+  const losses=recs.filter(g=>g.result==='l');
+  const pm={};
+  losses.forEach(g=>{const k=g.moves.slice(0,8).map(norm).join(' ');
+    if(g.moves.length>=6){(pm[k]=pm[k]||{n:0,g}).n++;pm[k].g=g;}});
+  const topLose=Object.entries(pm).sort((a,b)=>b[1].n-a[1].n).slice(0,6).filter(([,v])=>v.n>=2);
+  $('loseLines').innerHTML=topLose.length?
+    '<table><tr><th>Sequência inicial</th><th>Derrotas</th><th>Abertura</th><th></th></tr>'+
+    topLose.map(([k,v])=>`<tr><td style="font-family:monospace">${k}</td><td class="bad">${v.n}</td>
+      <td>${famName(v.g.opening)}</td><td>${v.g.url?`<a href="${v.g.url}" target="_blank">exemplo ↗</a>`:''}</td></tr>`).join('')+'</table>'
+    :'<p style="color:var(--mut)">Nenhum padrão repetido de derrota nas primeiras jogadas — as derrotas estão espalhadas por linhas diferentes (bom sinal de variedade, mas dificulta corrigir uma linha específica).</p>';
+
+  // armadilhas
+  const fell=[],used=[];
+  recs.forEach(g=>{
+    const mv=g.moves.map(norm);
+    for(const t of TRAPS){
+      if(t.seq.length<=mv.length&&t.seq.every((s,i)=>mv[i]===s)){
+        if(g.color===t.side){if(g.result==='w')used.push({t,g});}
+        else if(g.result==='l')fell.push({t,g});
+      }
+    }
+  });
+  const grpTrap=arr=>{const m={};arr.forEach(({t,g})=>{(m[t.name]=m[t.name]||{n:0,g}).n++;m[t.name].g=g;});
+    return Object.entries(m).sort((a,b)=>b[1].n-a[1].n);};
+  const trapHtml=(arr,emptyMsg,cls)=>{const gr=grpTrap(arr);
+    return gr.length?'<ul class="plain">'+gr.map(([n,v])=>
+      `<li><b class="${cls}">${n}</b> — ${v.n}x ${v.g.url?`· <a href="${v.g.url}" target="_blank">ver ↗</a>`:''}</li>`).join('')+'</ul>'
+      :`<p style="color:var(--mut)">${emptyMsg}</p>`;};
+  $('trapFall').innerHTML=trapHtml(fell,"Nenhuma armadilha conhecida detectada nas derrotas. 👏",'bad');
+  $('trapUse').innerHTML=trapHtml(used,"Nenhuma armadilha do banco aplicada com sucesso.",'good');
+
+  // como perde
+  const termMap={checkmated:'Xeque-mate',timeout:'Tempo',resigned:'Desistiu',abandoned:'Abandonou',stalemate:'Afogamento',perdeu:'Derrota (PGN)'};
+  const tm={};losses.forEach(g=>{const k=termMap[g.term]||g.term;tm[k]=(tm[k]||0)+1;});
+  chart('chLoss',{type:'bar',data:{labels:Object.keys(tm),
+    datasets:[{data:Object.values(tm),backgroundColor:'#e35d5d'}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8b93a7'}},y:{ticks:{color:'#8b93a7',precision:0}}}}});
+
+  // miniaturas
+  const minis=losses.filter(g=>g.moves.length<=24);
+  $('miniatures').innerHTML=minis.length?
+    '<table><tr><th>Lances</th><th>Abertura</th><th>Fim</th><th></th></tr>'+
+    minis.slice(0,8).map(g=>`<tr><td>${Math.ceil(g.moves.length/2)}</td><td>${famName(g.opening)}</td>
+     <td>${termMap[g.term]||g.term}</td><td>${g.url?`<a href="${g.url}" target="_blank">ver ↗</a>`:''}</td></tr>`).join('')+'</table>'
+    :'<p style="color:var(--mut)">Nenhuma derrota em 12 lances ou menos. Sólido! 💪</p>';
+
+  // diagnóstico
+  const S=[],W=[];
+  if(best.length&&best[0].p>=60)S.push(`Excelente com <b>${best[0].op}</b>: ${best[0].p}% em ${best[0].n} jogos — mantenha no repertório.`);
+  if(wW.p-wB.p>=10)S.push(`Muito mais forte de <b>Brancas</b> (${wW.p}% vs ${wB.p}%).`);
+  else if(wB.p-wW.p>=10)S.push(`Muito mais forte de <b>Pretas</b> (${wB.p}% vs ${wW.p}%).`);
+  const bestTc=tcRows.filter(r=>r.n>=10).sort((a,b)=>b.p-a.p)[0];
+  if(bestTc&&bestTc.p>=55)S.push(`Melhor ritmo: <b>${bestTc.k}</b> (${bestTc.p}%).`);
+  const timeLossPct=losses.length?Math.round(100*losses.filter(g=>g.term==='timeout').length/losses.length):0;
+  if(timeLossPct<=10&&losses.length>=10)S.push(`Ótimo controle do relógio: só ${timeLossPct}% das derrotas foram por tempo.`);
+  if(used.length)S.push(`Sabe aplicar armadilhas (${used.length} vitórias com padrões táticos conhecidos).`);
+  if(!S.length)S.push("Desempenho equilibrado, sem destaque estatístico claro — jogue mais partidas para refinar a análise.");
+
+  if(worst.length&&worst[0].p<=40)W.push(`<b>${worst[0].op}</b> é o ponto crítico: apenas ${worst[0].p}% em ${worst[0].n} jogos. Estude a linha ou troque de abertura.`);
+  if(timeLossPct>=25)W.push(`<b>${timeLossPct}% das derrotas são por tempo</b> — administre melhor o relógio ou jogue ritmos mais longos.`);
+  if(fell.length)W.push(`Caiu em armadilhas conhecidas ${fell.length}x (${grpTrap(fell)[0][0]} é a mais frequente).`);
+  if(minis.length>=3)W.push(`${minis.length} derrotas em ≤ 12 lances — revise os princípios de abertura (desenvolvimento, segurança do rei, f7/f2).`);
+  const worstTc=tcRows.filter(r=>r.n>=10).sort((a,b)=>a.p-b.p)[0];
+  if(worstTc&&worstTc.p<=45)W.push(`Pior ritmo: <b>${worstTc.k}</b> (${worstTc.p}%).`);
+  if(!W.length)W.push("Nenhuma fraqueza estatística evidente na amostra analisada. 👏");
+  $('strengths').innerHTML=S.map(s=>`<li>${s}</li>`).join('');
+  $('weaknesses').innerHTML=W.map(s=>`<li>${s}</li>`).join('');
+
+  // bot
+  $('botElo').value=Math.min(2800,Math.max(400,estElo));
+  $('botEloV').textContent=$('botElo').value;
+  $('botinfo').innerHTML=`Bot calibrado para <b>~${estElo} Elo</b> (média das últimas ${recent.length||0} partidas de <b>${user}</b>). Ajuste no controle abaixo se quiser.`;
+  $('results').classList.remove('hide');
+  newBotGame();
+}
+
+/* ---------- Fluxo principal ---------- */
+$('plat').onchange=()=>{ $('pgnbox').classList.toggle('hide',$('plat').value!=='pgn'); };
+$('go').onclick=async()=>{
+  const plat=$('plat').value,user=$('user').value.trim(),maxg=+$('maxg').value,st=m=>$('status').textContent=m;
+  try{
+    if(!user)throw new Error("Informe o username (ou o nome usado no PGN).");
+    st("Buscando partidas…");$('go').disabled=true;
+    let recs;
+    if(plat==='chesscom')recs=await fetchChessCom(user,maxg,st);
+    else if(plat==='lichess')recs=await fetchLichess(user,maxg,st);
+    else{
+      const f=$('pgnfile').files[0];
+      if(!f)throw new Error("Selecione um arquivo .pgn.");
+      recs=parsePgnFile(await f.text(),user);
+    }
+    st(`Analisando ${recs.length} partidas…`);
+    analyze(recs,user);
+    st(`✔ ${recs.length} partidas analisadas.`);
+  }catch(e){st("⚠ "+e.message);}
+  finally{$('go').disabled=false;}
+};
+
+/* ---------- Bot (Stockfish com força limitada) ---------- */
+let engine=null,engineReady=false,game=null,sel=null,playerColor='w',thinking=false;
+async function initEngine(){
+  if(engine||engine===false)return;
+  try{
+    const code=await (await fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')).text();
+    engine=new Worker(URL.createObjectURL(new Blob([code],{type:'application/javascript'})));
+    engine.onmessage=e=>{
+      const d=typeof e.data==='string'?e.data:'';
+      if(d==='uciok')engineReady=true;
+      if(d.startsWith('bestmove')){
+        const mv=d.split(' ')[1];
+        if(mv&&mv!=='(none)'&&game){
+          game.move({from:mv.slice(0,2),to:mv.slice(2,4),promotion:mv[4]||'q'});
+          thinking=false;renderBoard();updateBotStatus();
+        }
+      }
+    };
+    engine.postMessage('uci');
+  }catch(e){engine=false;/* fallback simples */}
+}
+function skillFromElo(elo){return Math.max(0,Math.min(20,Math.round((elo-500)/115)));}
+function engineMove(){
+  if(!game||game.game_over())return;
+  thinking=true;updateBotStatus();
+  const elo=+$('botElo').value;
+  if(engine&&engineReady){
+    engine.postMessage('setoption name Skill Level value '+skillFromElo(elo));
+    engine.postMessage('position fen '+game.fen());
+    engine.postMessage('go movetime '+(150+skillFromElo(elo)*60));
+  }else{ // fallback: bot heurístico
+    setTimeout(()=>{
+      const ms=game.moves({verbose:true});
+      let pick;
+      if(elo<900)pick=ms[Math.floor(Math.random()*ms.length)];
+      else{
+        const val={p:1,n:3,b:3,r:5,q:9};
+        ms.sort((a,b)=>((val[b.captured]||0)+(b.san.includes('+')?.5:0))-((val[a.captured]||0)+(a.san.includes('+')?.5:0)));
+        const k=Math.max(1,Math.round(ms.length*(1-Math.min(1,(elo-900)/1900))));
+        pick=ms[Math.floor(Math.random()*k)];
+      }
+      if(pick){game.move(pick.san);}
+      thinking=false;renderBoard();updateBotStatus();
+    },400);
+  }
+}
+const GLYPH={p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'};
+function renderBoard(){
+  const b=$('board');b.innerHTML='';
+  const files=['a','b','c','d','e','f','g','h'];
+  const ranks=playerColor==='w'?[8,7,6,5,4,3,2,1]:[1,2,3,4,5,6,7,8];
+  const fs=playerColor==='w'?files:[...files].reverse();
+  const legal=sel?game.moves({square:sel,verbose:true}).map(m=>m.to):[];
+  for(const r of ranks)for(const f of fs){
+    const sqName=f+r;
+    const d=document.createElement('div');
+    d.className='sq '+(((files.indexOf(f)+r)%2===0)?'dark':'light');
+    if(sel===sqName)d.classList.add('sel');
+    if(legal.includes(sqName))d.classList.add('dot');
+    const pc=game.get(sqName);
+    if(pc){d.textContent=GLYPH[pc.type];d.classList.add(pc.color==='w'?'wp':'bp');}
+    d.onclick=()=>clickSq(sqName);
+    b.appendChild(d);
+  }
+  const hist=game.history();
+  $('moves').textContent=hist.map((m,i)=>i%2===0?`${i/2+1}. ${m}`:m).join('  ');
+}
+function clickSq(sq){
+  if(thinking||!game||game.game_over())return;
+  if(game.turn()!==playerColor)return;
+  const pc=game.get(sq);
+  if(sel){
+    const mv=game.moves({square:sel,verbose:true}).find(m=>m.to===sq);
+    if(mv){game.move({from:sel,to:sq,promotion:'q'});sel=null;renderBoard();updateBotStatus();
+      if(!game.game_over())setTimeout(engineMove,250);return;}
+  }
+  sel=(pc&&pc.color===playerColor)?sq:null;
+  renderBoard();
+}
+function updateBotStatus(){
+  const s=$('botstatus');
+  if(!game)return;
+  if(game.in_checkmate())s.innerHTML=game.turn()===playerColor?'<span class="bad">Xeque-mate — o bot venceu.</span>':'<span class="good">Xeque-mate — você venceu! 🏆</span>';
+  else if(game.in_draw()||game.in_stalemate())s.textContent='Empate.';
+  else if(thinking)s.textContent='Bot pensando…';
+  else s.textContent=(game.turn()===playerColor?'Sua vez':'Vez do bot')+(game.in_check()?' — xeque!':'');
+}
+function newBotGame(){
+  game=new Chess();sel=null;thinking=false;
+  playerColor=$('botColor').value;
+  initEngine().then(()=>{renderBoard();updateBotStatus();
+    if(playerColor==='b')setTimeout(engineMove,400);});
+}
+$('botStart').onclick=newBotGame;
+$('botElo').oninput=()=>$('botEloV').textContent=$('botElo').value;
+//JS-END
+</script>
+</body>
+</html>
