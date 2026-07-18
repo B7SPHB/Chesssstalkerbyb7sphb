@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stalker — Espione seu rival antes da partida</title>
+<meta name="description" content="Ferramentas que transformam sua preparação: Stalker Score de previsibilidade, mapa de calor de erros com Stockfish, gêmeo do rival e plano de vitória.">
+<meta name="theme-color" content="#0b0a12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{--bg:#0b0a12;--card:#141221;--card2:#1c192e;--txt:#ece9f7;--mut:#948fb0;
+  --vio:#8b5cf6;--vio2:#6d28d9;--neon:#4ade80;--bad:#fb7185;--warn:#fbbf24;--line:rgba(148,143,176,.16)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sans-serif;line-height:1.5;
+  background-image:radial-gradient(800px 400px at 80% -10%,rgba(139,92,246,.18),transparent),
+                   radial-gradient(500px 300px at 5% 100%,rgba(74,222,128,.06),transparent);
+  background-attachment:fixed}
+#pbar{position:fixed;top:0;left:0;height:3px;width:0;z-index:99;background:linear-gradient(90deg,var(--vio),var(--neon));transition:width .3s,opacity .6s}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 16px}
+h1{font-family:'Space Grotesk',sans-serif;font-size:2.2rem;letter-spacing:-1px}
+h1 span{background:linear-gradient(90deg,#a78bfa,#4ade80);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{color:var(--mut);margin:6px 0 18px;max-width:720px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+.card h2{font-family:'Space Grotesk',sans-serif;font-size:1.02rem;color:#c4b5fd;margin-bottom:12px;letter-spacing:.3px}
+.card h2 small{color:var(--mut);font-weight:400;font-size:.75rem}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:block;font-size:.76rem;color:var(--mut);margin-bottom:4px}
+input,select,button{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:.93rem;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:var(--vio)}
+button{cursor:pointer;transition:.2s}
+button.primary{background:linear-gradient(135deg,var(--vio2),var(--vio));border:none;color:#fff;font-weight:700}
+button.primary:hover{filter:brightness(1.2)}
+button.ghost{background:transparent;border:1px solid var(--vio);color:#c4b5fd}
+button.ghost:hover{background:rgba(139,92,246,.15)}
+#status{color:var(--warn);min-height:1.2em;margin-top:10px;font-size:.9rem}
+.hide{display:none}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.stat{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+.stat .v{font-size:1.4rem;font-weight:800;font-family:'Space Grotesk',sans-serif}
+.stat .l{font-size:.72rem;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:.87rem}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:.72rem;text-transform:uppercase;letter-spacing:.5px}
+tr:last-child td{border-bottom:none}
+.good{color:var(--neon)}.bad{color:var(--bad)}.warn{color:var(--warn)}.pct{font-weight:800}
+a{color:#93c5fd;text-decoration:none}a:hover{text-decoration:underline}
+.chip{display:inline-block;padding:5px 12px;border:1px solid var(--line);border-radius:999px;font-size:.78rem;color:var(--mut);cursor:pointer;margin:2px;transition:.2s}
+.chip:hover{border-color:var(--neon);color:var(--txt)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--vio),var(--neon))}
+.bar.red i{background:linear-gradient(90deg,#f43f5e,#fbbf24)}
+#nav{position:sticky;top:0;z-index:50;display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;background:rgba(11,10,18,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);margin-bottom:14px}
+#nav a{font-size:.76rem;padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--mut)}
+#nav a:hover{border-color:var(--vio);color:var(--txt);text-decoration:none}
+/* player card */
+#pcard{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+#pAva{width:86px;height:86px;border-radius:18px;background:linear-gradient(135deg,var(--vio2),var(--vio));display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;font-family:'Space Grotesk',sans-serif}
+.ovr{text-align:center}.ovr .n{font-size:2.4rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:var(--neon)}
+.sub{display:flex;gap:14px;flex-wrap:wrap}
+.sub div{text-align:center}.sub b{font-size:1.15rem;font-family:'Space Grotesk',sans-serif}.sub span{font-size:.68rem;color:var(--mut);display:block}
+/* gauge */
+#ring{width:150px;height:150px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;flex:0 0 auto}
+#ring::after{content:'';position:absolute;inset:12px;border-radius:50%;background:var(--card)}
+#ringV{position:relative;z-index:2;text-align:center;font-family:'Space Grotesk',sans-serif}
+#ringV b{font-size:2rem}
+/* boards */
+.cboard{display:grid;grid-template-columns:repeat(8,1fr);width:min(420px,92vw);border-radius:10px;overflow:hidden;user-select:none;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.sq{aspect-ratio:1/1;width:100%;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,4.4vw,36px);line-height:1;cursor:pointer;position:relative;overflow:hidden}
+.sq.sel{box-shadow:inset 0 0 0 3px var(--warn)}
+.sq.last{box-shadow:inset 0 0 0 100px rgba(250,204,21,.22)}
+.sq.dot::after{content:'';position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(74,222,128,.55)}
+.sq img{width:88%;height:88%;pointer-events:none}
+.wp{color:#fafafa;text-shadow:0 1px 3px rgba(0,0,0,.8)}.bp{color:#101018;text-shadow:0 1px 2px rgba(255,255,255,.25)}
+#heatBoard{display:grid;grid-template-columns:repeat(8,1fr);width:min(340px,88vw);border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+#heatBoard div{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:.55rem;color:rgba(255,255,255,.45)}
+.wl{font-weight:800;width:22px;display:inline-block;text-align:center;border-radius:6px}
+.wl.W{background:rgba(74,222,128,.2);color:var(--neon)}.wl.L{background:rgba(251,113,133,.18);color:var(--bad)}.wl.D{background:rgba(148,143,176,.18);color:var(--mut)}
+.lgd{display:inline-flex;flex-direction:column;align-items:center;gap:4px;padding:12px;border:1px solid var(--line);border-radius:14px;cursor:pointer;min-width:96px;transition:.2s;margin:3px}
+.lgd:hover{border-color:var(--vio)}
+.lgd b{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#312e81,#6d28d9);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif}
+.lgd span{font-size:.75rem}.lgd small{font-size:.62rem;color:var(--mut)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+ul.plain{list-style:none}ul.plain li{padding:7px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+ul.plain li:last-child{border-bottom:none}
+canvas{max-height:300px}
+.tgl{border:1px solid var(--line)}.tgl.on{background:linear-gradient(135deg,var(--vio2),var(--vio));color:#fff;border-color:transparent;font-weight:700}
+footer{color:var(--mut);font-size:.75rem;text-align:center;padding:20px 0}
+</style>
+</head>
+<body>
+<div id="pbar"></div>
+<div class="wrap">
+
+<header>
+  <h1>Stalker<span>♞</span></h1>
+  <p class="tag">Ferramentas que transformam sua preparação: da <b>nota de previsibilidade 0–100</b> ao <b>mapa de calor dos erros dele com Stockfish</b> — sente-se ao tabuleiro já sabendo como o seu rival perde.</p>
+</header>
+
+<div class="card">
+  <h2>🔎 Espionar um jogador</h2>
+  <div class="row">
+    <div><label>Plataforma</label><select id="plat"><option value="chesscom">Chess.com</option><option value="lichess">Lichess</option></select></div>
+    <div><label>Username do rival</label><input id="user" placeholder="ex.: iamfrostly"></div>
+    <div><label>Partidas</label><select id="maxg"><option>200</option><option selected>400</option><option>800</option><option>1500</option></select></div>
+    <div><button class="primary" id="go">Stalkear</button></div>
+  </div>
+  <div id="status"></div>
+</div>
+
+<div id="profile" class="hide">
+
+<nav id="nav">
+  <a href="#secCard">Perfil</a><a href="#secScore">Stalker Score</a><a href="#secPlan">Como vencê-lo</a>
+  <a href="#secWeak">Fraquezas</a><a href="#secPsy">Psicologia</a><a href="#secTwin">Gêmeo</a>
+  <a href="#secTime">Tempo</a><a href="#secDeep">Análise profunda</a><a href="#secEnd">Finais</a>
+  <a href="#secOpen">Repertório</a><a href="#secTraps">Armadilhas</a><a href="#secVs">Nêmesis</a>
+  <a href="#secRecent">Recentes</a><a href="#secLegends">Lendas</a>
+</nav>
+
+<div class="card" id="secCard"><div id="pcard"></div></div>
+
+<div class="card" id="secScore"><h2>🎯 Stalker Score — quão previsível é o seu rival?</h2>
+  <div class="row" style="align-items:center;gap:24px">
+    <div id="ring"><div id="ringV"><b id="scoreVal">—</b><div style="font-size:.7rem;color:var(--mut)">/100</div></div></div>
+    <div style="flex:1;min-width:260px" id="scoreSignals"></div>
+  </div>
+  <p id="scoreVerdict" style="margin-top:10px;font-size:.92rem"></p>
+</div>
+
+<div class="card" id="secPlan"><h2>🏆 Plano de Vitória <small>— checklist pré-jogo tirado dos números dele</small></h2>
+  <p id="beatMode" style="margin-bottom:10px;font-size:.92rem"></p>
+  <div id="checklist"></div>
+</div>
+
+<div class="card" id="secWeak"><h2>🧨 Fraquezas e Forças por variante</h2>
+  <div class="row" style="margin-bottom:10px">
+    <button class="tgl on" id="wkW">Repertório dele de Brancas</button>
+    <button class="tgl" id="wkB">Repertório dele de Pretas</button>
+  </div>
+  <div id="weakOut"></div>
+</div>
+
+<div class="card" id="secPsy"><h2>🧠 Tilt e Psicologia <small>— resiliência mental, 0–100 por dimensão</small></h2>
+  <div class="two"><div><canvas id="chPsy"></canvas></div><div id="psyList"></div></div>
+</div>
+
+<div class="card" id="secTwin"><h2>👥 Twin Bot <small>— o clone dele: partidas reais · aberturas dele · Elo dele</small></h2>
+  <p style="color:var(--mut);font-size:.9rem;margin-bottom:10px">Treine antes da partida real: o gêmeo abre exatamente como ele (livro montado com as partidas reais) e, fora do livro, joga no Elo real dele via Stockfish.</p>
+  <div class="row" style="margin-bottom:12px">
+    <div><label>Suas peças</label><select id="twinColor"><option value="w">Brancas</option><option value="b">Pretas</option></select></div>
+    <div><button class="primary" id="twinStart">Jogar contra o Gêmeo</button></div>
+    <div style="align-self:center" id="twinBook"></div>
+  </div>
+  <div id="twinBoard" class="cboard"></div>
+  <div id="twinStatus" style="margin-top:8px;font-size:.92rem;color:var(--mut)"></div>
+</div>
+
+<div class="card" id="secTime"><h2>⏱ Gestão do tempo <small>— para onde vai o relógio dele?</small></h2><div id="timeOut"></div></div>
+
+<div class="card" id="secDeep"><h2>🔬 Análise Profunda <small>— Stockfish sobre as partidas dele</small></h2>
+  <div class="row" style="margin-bottom:10px">
+    <div><label>Partidas a analisar</label><select id="deepN"><option value="2">2 (rápido)</option><option value="3" selected>3</option><option value="5">5 (demora)</option></select></div>
+    <div><button class="primary" id="deepGo">Rodar Stockfish</button></div>
+  </div>
+  <div id="deepProg" style="color:var(--warn);min-height:1.2em;margin-bottom:8px"></div>
+  <div id="deepOut"><p style="color:var(--mut)">Precisão por fase, clutch factor, peça problemática, lance do primeiro erro grave e o mapa de calor dos erros.</p></div>
+  <div class="two" style="margin-top:10px">
+    <div id="deepStats"></div>
+    <div><div id="heatBoard"></div><p style="font-size:.78rem;color:var(--mut);margin-top:6px">Mapa de calor: casas onde os erros graves dele acontecem.</p></div>
+  </div>
+</div>
+
+<div class="card" id="secEnd"><h2>♟ Estatísticas de Finais <small>— onde converte, onde desmorona</small></h2>
+  <button class="ghost" id="endGo" style="margin-bottom:10px">Classificar todos os finais dele</button>
+  <div id="endOut"></div>
+</div>
+
+<div class="card" id="secOpen"><h2>📚 Repertório <small>— winrate linha a linha</small></h2>
+  <div class="two"><div id="repW"></div><div id="repB"></div></div>
+</div>
+
+<div class="card" id="secTraps"><h2>🪤 Armadilhas <small>— 21 monitoradas, da Stafford ao Fried Liver</small></h2>
+  <div class="two">
+    <div><h3 class="warn" style="margin-bottom:8px;font-size:.9rem">Usa — cuidado!</h3><div id="trapUse2"></div></div>
+    <div><h3 class="good" style="margin-bottom:8px;font-size:.9rem">Cai em — use estas!</h3><div id="trapFall2"></div></div>
+  </div>
+</div>
+
+<div class="card" id="secVs"><h2>⚔️ Nêmesis e Confronto Direto</h2><div id="vsOut"></div></div>
+
+<div class="card" id="secRecent"><h2>🕑 Recentes</h2><div id="recentOut"></div></div>
+
+<div class="card" id="secViewer"><h2>♟ Tabuleiro <small id="vLabel">— clique em qualquer linha/variante para vê-la aqui</small></h2>
+  <div class="row" style="margin-bottom:10px">
+    <button class="ghost" id="vStart">⏮</button><button class="ghost" id="vPrev">◀</button>
+    <button class="ghost" id="vNext">▶</button><button class="ghost" id="vEnd">⏭</button>
+    <button class="ghost" id="vFlip">🔄</button>
+  </div>
+  <div id="vboard" class="cboard"></div>
+  <div id="vStatus" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:.85rem;color:var(--mut)"></div>
+</div>
+
+</div><!-- /profile -->
+
+<div class="card" id="secLegends"><h2>👑 Galeria de Lendas <small>— estilos e segredos dos gigantes</small></h2>
+  <div id="legendChips"></div>
+  <div id="legendOut" style="margin-top:12px"></div>
+</div>
+
+<footer>Stalker · movido por APIs públicas do Chess.com e Lichess + Stockfish no navegador · inspirado no chessstalker.com · grátis</footer>
+</div>
+
+<script src="stalker-core.js"></script>
+<script src="stalker-app.js"></script>
+</body>
+</html>
