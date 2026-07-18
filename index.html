@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChessLens — Plataforma de Análise de Xadrez</title>
+<meta name="description" content="Plataforma gratuita de análise de xadrez: precisão por lance, aberturas, armadilhas, treino, mestres, leitor PGN/PDF e bot clone. Chess.com, Lichess e FIDE.">
+<meta name="theme-color" content="#0a0c12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ChessLens">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Space+Grotesk:wght@400;600;700&family=Nunito:wght@400;700;800&family=Lora:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{
+  --bg:#0a0c12;--card:rgba(20,24,36,.78);--card2:#1a2030;--txt:#e7eaf3;--mut:#94a3b8;
+  --acc:#8b5cf6;--acc2:#6366f1;--good:#34d399;--bad:#fb7185;--warn:#fbbf24;
+  --line:rgba(148,163,184,.14);--blue:#7dd3fc;--navbg:rgba(10,12,18,.82);--font:'Inter';
+}
+html[data-theme='black']{--bg:#000;--card:rgba(10,11,16,.92);--card2:#10131b;--navbg:rgba(0,0,0,.88)}
+html[data-theme='light']{--bg:#f3f5fa;--card:#ffffff;--card2:#eef1f8;--txt:#1c2333;--mut:#5b6478;
+  --line:rgba(30,41,59,.14);--navbg:rgba(255,255,255,.88);--blue:#2563eb}
+html[data-theme='light'] body{background-image:radial-gradient(700px 380px at 85% -5%,rgba(99,102,241,.08),transparent)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:var(--font),'Segoe UI',system-ui,sans-serif;line-height:1.55;
+  background-image:radial-gradient(700px 380px at 85% -5%,rgba(99,102,241,.16),transparent),
+                   radial-gradient(600px 340px at 0% 100%,rgba(52,211,153,.07),transparent);
+  background-attachment:fixed}
+#pbar{position:fixed;top:0;left:0;height:3px;width:0;z-index:200;border-radius:0 3px 3px 0;
+  background:linear-gradient(90deg,var(--acc2),var(--acc),var(--good));transition:width .3s,opacity .6s}
+#topbar{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:var(--navbg);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+#topbar b{font-size:1.05rem}
+#topbar b span{background:linear-gradient(90deg,#818cf8,#a78bfa,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+#topbar small{color:var(--mut)}
+#menuBtn{font-size:1.15rem;background:none;border:1px solid var(--line);border-radius:8px;padding:4px 12px;color:var(--txt);cursor:pointer}
+#menuBtn:hover{border-color:var(--acc)}
+#drawer{position:fixed;top:0;left:-300px;width:290px;height:100%;background:var(--card2);z-index:120;
+  transition:left .25s;padding:16px;overflow:auto;border-right:1px solid var(--line)}
+#drawer.open{left:0}
+#drawer h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;color:var(--mut);margin:14px 0 6px}
+#drawer a{display:block;padding:9px 12px;border-radius:10px;color:var(--txt);margin-bottom:2px;cursor:pointer;font-size:.92rem}
+#drawer a:hover,#drawer a.act{background:rgba(139,92,246,.15);color:#c4b5fd;text-decoration:none}
+#drawer select{width:100%;margin-bottom:8px}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;display:none}
+#scrim.on{display:block}
+.page{display:none}
+.page.act{display:block}
+.wrap{max-width:1120px;margin:0 auto;padding:22px 16px}
+header h1{font-size:2rem;font-weight:800;letter-spacing:-.5px}
+header h1 span{background:linear-gradient(90deg,#818cf8,#a78bfa,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{color:var(--mut);margin:6px 0 14px;font-size:.95rem;max-width:760px}
+#nav{display:flex;gap:6px;flex-wrap:wrap;padding:8px 0;margin-bottom:10px}
+#nav a{color:var(--mut);font-size:.8rem;padding:5px 11px;border:1px solid var(--line);border-radius:999px;text-decoration:none;transition:.2s}
+#nav a:hover{color:var(--txt);border-color:var(--acc);background:rgba(139,92,246,.12)}
+.card{background:var(--card);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:16px;
+  padding:20px;margin-bottom:18px;transition:transform .25s,border-color .25s,opacity .5s}
+.card:hover{border-color:rgba(139,92,246,.35)}
+.reveal{opacity:0;transform:translateY(14px)}
+.reveal.vis{opacity:1;transform:none}
+.card h2{font-size:1rem;margin-bottom:14px;color:#c7d2fe;font-weight:600;letter-spacing:.2px}
+html[data-theme='light'] .card h2{color:#4f46e5}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:block;font-size:.78rem;color:var(--mut);margin-bottom:4px}
+input,select,button,textarea{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:10px;
+  padding:9px 13px;font-size:.93rem;font-family:inherit;transition:.2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+button{cursor:pointer}
+button.primary{background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;font-weight:600;border:none}
+button.primary:hover{filter:brightness(1.15);transform:translateY(-1px)}
+button.ghost{background:transparent;border:1px solid var(--acc);color:#c4b5fd}
+html[data-theme='light'] button.ghost{color:#6d28d9}
+button.ghost:hover{background:rgba(139,92,246,.14)}
+#status,#cmpStatus{color:var(--warn);font-size:.9rem;margin-top:10px;min-height:1.2em}
+.grid{display:grid;gap:14px}
+.grid.c4{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+.grid.c2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.stat{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;transition:.2s}
+.stat:hover{border-color:rgba(139,92,246,.4);transform:translateY(-2px)}
+.stat .v{font-size:1.45rem;font-weight:800}
+.stat .l{font-size:.74rem;color:var(--mut);margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:8px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.4px}
+tr:last-child td{border-bottom:none}
+.pct{font-weight:700}
+.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--good));border-radius:4px}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+.hide{display:none}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+ul.plain{list-style:none}ul.plain li{padding:7px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+ul.plain li:last-child{border-bottom:none}
+canvas{max-height:280px}
+.crumb{color:var(--blue);cursor:pointer;font-family:ui-monospace,monospace}
+.crumb:hover{text-decoration:underline}
+tr.mv{cursor:pointer;transition:.15s}tr.mv:hover{background:rgba(139,92,246,.1)}
+.stack{height:9px;border-radius:5px;overflow:hidden;display:flex;margin-top:5px;background:var(--line)}
+.stack i{height:100%}
+.tgl{border:1px solid var(--line)}
+.tgl.on{background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;font-weight:600;border-color:transparent}
+.chip{display:inline-block;padding:5px 11px;border:1px solid var(--line);border-radius:999px;font-size:.8rem;color:var(--mut);cursor:pointer;margin:2px;transition:.2s}
+.chip:hover{border-color:var(--acc);color:var(--txt)}
+#feats{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+#feats span{font-size:.78rem;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--mut)}
+/* tabuleiros */
+.cboard{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);width:min(460px,92vw);aspect-ratio:1;
+  border-radius:10px;overflow:hidden;user-select:none;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(24px,5.4vw,40px);line-height:1;cursor:pointer;position:relative;overflow:hidden;transition:box-shadow .1s}
+.sq.sel{box-shadow:inset 0 0 0 3px var(--warn)}
+.sq.last{box-shadow:inset 0 0 0 100px rgba(250,204,21,.24)}
+.sq.hint{box-shadow:inset 0 0 0 3px var(--good)}
+.sq.dot::after{content:'';position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(16,185,129,.55)}
+.sq img{width:88%;height:88%;pointer-events:none}
+.wp{color:#fafafa;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.bp{color:#111420;text-shadow:0 1px 2px rgba(255,255,255,.25)}
+.sq.txtset{font-size:clamp(16px,3.6vw,26px);font-weight:800;font-family:ui-monospace,monospace}
+#evalTxt{font-family:ui-monospace,monospace;font-size:1rem;font-weight:700}
+#botinfo{font-size:.9rem;color:var(--mut);margin:8px 0}
+#moves,#anlStatus{font-family:ui-monospace,monospace;font-size:.85rem;color:var(--mut);max-height:120px;overflow:auto;margin-top:10px}
+#pdfCanvas{max-width:100%;background:#fff;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.tagBl{color:var(--bad);font-weight:800}.tagMi{color:#fb923c;font-weight:700}.tagIn{color:var(--warn);font-weight:700}
+footer{color:var(--mut);font-size:.78rem;text-align:center;padding:20px 0}
+@media print{
+  body{background:#fff;color:#111;background-image:none}
+  .card{background:#fff;border-color:#bbb;break-inside:avoid;backdrop-filter:none}
+  .card,.reveal{opacity:1!important;transform:none!important}
+  .stat{background:#f4f4f4}
+  th{color:#444}td{border-color:#ddd}
+  :root{--txt:#111;--mut:#555;--line:#ddd}
+  #setupCard,#filterBtns,#cmpForm,footer,#nav,#pbar,#topbar,#drawer,#scrim{display:none!important}
+  a{color:#333}
+}
+</style>
+</head>
+<body>
+<div id="pbar"></div>
+
+<div id="topbar">
+  <button id="menuBtn">☰</button>
+  <b>Chess<span>Lens</span> ♞</b>
+  <small id="topSub">plataforma de análise</small>
+</div>
+
+<aside id="drawer">
+  <h3>Páginas</h3>
+  <a data-go="pg-home">🏠 Análise de jogador</a>
+  <a data-go="pg-prec">🎯 Precisão (Stockfish)</a>
+  <a data-go="pg-open">📚 Aberturas & Armadilhas</a>
+  <a data-go="pg-train">🏋️ Treino</a>
+  <a data-go="pg-board">♟ Tabuleiro de análise</a>
+  <a data-go="pg-bot">🤖 Jogar contra o bot</a>
+  <a data-go="pg-pgn">📖 Leitor PGN</a>
+  <a data-go="pg-pdf">📕 Leitor PDF</a>
+  <a data-go="pg-hist">📜 Histórico</a>
+  <h3>Aparência</h3>
+  <label>Tema</label>
+  <select id="uiTheme"><option value="dark">Escuro</option><option value="black">Preto (OLED)</option><option value="light">Claro</option></select>
+  <label>Fonte</label>
+  <select id="uiFont"><option value="Inter">Inter</option><option value="Space Grotesk">Space Grotesk</option><option value="Nunito">Nunito</option><option value="Lora">Lora (serifada)</option></select>
+  <h3>Tabuleiro</h3>
+  <label>Tema das casas</label>
+  <select id="boardTheme">
+    <option value="esmeralda">Esmeralda</option><option value="madeira">Madeira</option>
+    <option value="oceano">Oceano</option><option value="roxo">Roxo</option><option value="noturno">Noturno</option>
+  </select>
+  <label>Peças</label>
+  <select id="pieceSet">
+    <option value="cburnett">Clássico</option><option value="merida">Merida</option>
+    <option value="alpha">Alpha</option><option value="maestro">Maestro</option>
+    <option value="staunty">Staunty</option><option value="tatiana">Tatiana</option>
+    <option value="uni">Símbolos</option><option value="txt">Letras</option>
+  </select>
+</aside>
+<div id="scrim"></div>
+
+<div class="wrap">
+
+<!-- ==================== PÁGINA: INÍCIO ==================== -->
+<section class="page act" id="pg-home">
+<header>
+  <h1>Chess<span>Lens</span> ♞</h1>
+  <p>Raio-X completo de qualquer jogador — precisão por lance, aberturas, armadilhas, tilt, treino guiado e um bot clonado com a força dele. Chess.com, Lichess ou PGN (FIDE/OTB). Grátis e 100% no navegador.</p>
+  <div id="feats">
+    <span>🎯 Precisão Stockfish</span><span>🌳 Árvore de aberturas</span><span>👑 Base de mestres</span>
+    <span>🪤 Armadilhas</span><span>🎢 Tilt & horários</span><span>🏋️ Plano de treino</span>
+    <span>📖 Leitor PGN</span><span>📕 Leitor PDF</span><span>🤖 Bot clone</span>
+  </div>
+</header>
+
+<div class="card" id="setupCard">
+  <h2>Analisar jogador</h2>
+  <div class="row">
+    <div><label>Plataforma</label>
+      <select id="plat">
+        <option value="chesscom">Chess.com</option>
+        <option value="lichess">Lichess</option>
+        <option value="pgn">Arquivo PGN (FIDE/OTB)</option>
+      </select></div>
+    <div><label>Username (ou nome no PGN)</label><input id="user" placeholder="ex.: hikaru"></div>
+    <div><label>Partidas</label>
+      <select id="maxg"><option>200</option><option selected>500</option><option>1000</option><option>3000</option><option>5000</option></select></div>
+    <div id="pgnbox" class="hide"><label>Arquivo .pgn</label><input type="file" id="pgnfile" accept=".pgn,.txt"></div>
+    <div><button class="primary" id="go">Analisar</button></div>
+    <div style="flex:1;min-width:220px"><label>Testar com um exemplo</label><div id="examples"></div></div>
+  </div>
+  <div id="recentBox" class="hide" style="margin-top:8px"><label>Análises recentes</label><div id="recentChips"></div></div>
+  <div id="status"></div>
+</div>
+
+<div id="results" class="hide">
+  <nav id="nav">
+    <a href="#sec-vis">Visão geral</a><a href="#sec-hor">Horários</a><a href="#sec-ab">Aberturas</a>
+    <a href="#sec-arm">Armadilhas</a><a href="#sec-riv">Rivais</a><a href="#sec-diag">Diagnóstico</a><a href="#sec-cmp">Comparar</a>
+  </nav>
+
+  <div class="card"><h2>Filtros, relatório e compartilhamento</h2>
+    <div class="row" id="filterBtns">
+      <div><label>Ritmo</label><select id="fTc"><option value="all">Todos</option></select></div>
+      <div><label>Cor</label><select id="fColor"><option value="all">Ambas</option><option value="w">Brancas</option><option value="b">Pretas</option></select></div>
+      <div><label>De</label><input type="date" id="fFrom"></div>
+      <div><label>Até</label><input type="date" id="fTo"></div>
+      <div><button class="primary" id="fApply">Aplicar filtros</button></div>
+      <div><button class="ghost" id="doPrint">🖨 Relatório PDF</button></div>
+      <div><button class="ghost" id="shareBtn">🔗 Copiar link</button></div>
+    </div>
+  </div>
+
+  <div class="card" id="sec-vis"><h2>Visão geral</h2>
+    <div class="grid c4" id="overview"></div>
+    <p id="ovNote" style="margin-top:10px;font-size:.82rem;color:var(--mut)"></p>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Resultados</h2><canvas id="chWDL"></canvas></div>
+    <div class="card"><h2>Evolução de rating</h2><canvas id="chRating"></canvas></div>
+  </div>
+
+  <div class="card"><h2>Desempenho por cor e ritmo</h2><div class="two">
+    <div id="colorPerf"></div><div id="tcPerf"></div>
+  </div></div>
+
+  <div class="grid c2" id="sec-hor">
+    <div class="card"><h2>Desempenho por hora do dia</h2><canvas id="chHour"></canvas></div>
+    <div class="card"><h2>Desempenho por dia da semana</h2><canvas id="chDay"></canvas></div>
+  </div>
+
+  <div class="card"><h2>Tilt e sequências 🎢</h2>
+    <div class="grid c4" id="tiltStats"></div>
+    <p id="tiltAdvice" style="margin-top:10px;font-size:.9rem;color:var(--mut)"></p>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Duração das partidas</h2><canvas id="chLen"></canvas></div>
+    <div class="card"><h2>Recordes 🏅</h2><div id="records"></div></div>
+  </div>
+
+  <div class="card" id="sec-ab"><h2>Aberturas com Brancas</h2><div id="opWhite"></div></div>
+  <div class="card"><h2>Defesas com Pretas</h2><div id="opBlack"></div></div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Melhores linhas 💪</h2><div id="bestOp"></div></div>
+    <div class="card"><h2>Piores linhas ⚠️</h2><div id="worstOp"></div></div>
+  </div>
+
+  <div class="card"><h2>Linhas em que mais perde</h2><div id="loseLines"></div></div>
+
+  <div class="grid c2" id="sec-arm">
+    <div class="card"><h2>Armadilhas em que cai 🪤</h2><div id="trapFall"></div></div>
+    <div class="card"><h2>Armadilhas que aplica 🎯</h2><div id="trapUse"></div></div>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2>Como perde</h2><canvas id="chLoss"></canvas></div>
+    <div class="card"><h2>Derrotas rápidas (≤ 12 lances)</h2><div id="miniatures"></div></div>
+  </div>
+
+  <div class="card" id="sec-riv"><h2>Rivais frequentes ⚔️</h2><div id="rivals"></div></div>
+
+  <div class="card" id="sec-diag"><h2>Diagnóstico</h2><div class="two">
+    <div><h3 class="good" style="margin-bottom:8px">Pontos fortes</h3><ul class="plain" id="strengths"></ul></div>
+    <div><h3 class="bad" style="margin-bottom:8px">Pontos fracos</h3><ul class="plain" id="weaknesses"></ul></div>
+  </div></div>
+
+  <div class="card" id="sec-cmp"><h2>Comparar com outro jogador</h2>
+    <div class="row" id="cmpForm">
+      <div><label>Plataforma</label><select id="cmpPlat"><option value="chesscom">Chess.com</option><option value="lichess">Lichess</option></select></div>
+      <div><label>Username do rival</label><input id="cmpUser" placeholder="ex.: magnuscarlsen"></div>
+      <div><button class="primary" id="cmpGo">Comparar</button></div>
+    </div>
+    <div id="cmpStatus"></div>
+    <div id="cmpBody" style="margin-top:12px"></div>
+  </div>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: PRECISÃO ==================== -->
+<section class="page" id="pg-prec">
+<div class="card"><h2>🎯 Análise de precisão com Stockfish</h2>
+  <p style="color:var(--mut);font-size:.9rem;margin-bottom:12px">O motor avalia <b>cada posição da partida</b> e aponta o lance exato onde a avaliação despencou — capivara (?!), erro (?) e capivara grave (??) — com precisão por jogador, no estilo Lichess/Chess.com.</p>
+  <div class="row">
+    <div style="min-width:280px;flex:1"><label>Partida (da análise do jogador)</label><select id="precGame" style="width:100%"></select></div>
+    <div><label>Velocidade</label><select id="precDepth">
+      <option value="120">Rápida (~120ms/lance)</option><option value="300" selected>Equilibrada (~300ms)</option><option value="700">Profunda (~700ms)</option></select></div>
+    <div><button class="primary" id="precGo">Analisar precisão</button></div>
+    <div><button class="ghost hide" id="precCancel">✖ Cancelar</button></div>
+  </div>
+  <div id="precProg" style="margin-top:10px;color:var(--warn);min-height:1.2em"></div>
+</div>
+<div class="card"><h2>Resultado</h2><div id="precOut"><p style="color:var(--mut)">Nenhuma partida analisada ainda. Analise um jogador na página Início, escolha uma partida acima e clique em Analisar precisão.</p></div></div>
+<div class="card"><h2>Onde o jogo escapa — erros por fase</h2><div id="precPhase"><p style="color:var(--mut)">Analise algumas partidas com o motor; os erros são somados por fase (abertura, meio-jogo, final) para mostrar onde você mais perde pontos.</p></div></div>
+</section>
+
+<!-- ==================== PÁGINA: ABERTURAS ==================== -->
+<section class="page" id="pg-open">
+<div class="card" id="treeCard"><h2>Árvore de aberturas 🌳</h2>
+  <div class="row" style="margin-bottom:10px">
+    <button class="tgl on" id="treeW">Com Brancas</button>
+    <button class="tgl" id="treeB">Com Pretas</button>
+    <button class="ghost" id="treeMasters">👑 Mestres nesta posição</button>
+  </div>
+  <div id="treeBc" style="margin-bottom:8px;font-size:.9rem"></div>
+  <div id="treeWarn" style="margin-bottom:8px;font-size:.85rem"></div>
+  <div class="two">
+    <div id="treeBody"><p style="color:var(--mut)">Analise um jogador na página Início para montar a árvore do repertório.</p></div>
+    <div><div id="tboard" class="cboard" style="width:min(340px,86vw)"></div>
+      <p style="font-size:.8rem;color:var(--mut);margin-top:6px">A posição acompanha a linha selecionada.</p></div>
+  </div>
+  <div id="mastersOut" style="margin-top:12px"></div>
+</div>
+<div class="card"><h2>👑 Repertório sugerido (base de mestres)</h2>
+  <p style="color:var(--mut);font-size:.9rem">Navegue na árvore acima e clique em <b>Mestres nesta posição</b>: o site compara os seus lances com o que os mestres jogam (base de +2 milhões de partidas OTB do Lichess) e sugere onde o seu repertório diverge da teoria. Lances marcados com ✔ são os que você já joga.</p>
+</div>
+<div class="card"><h2>🪤 Enciclopédia de armadilhas</h2>
+  <p style="color:var(--mut);font-size:.9rem;margin-bottom:10px">Clique para ver cada armadilha no tabuleiro, lance a lance. A árvore acima também avisa quando uma armadilha é possível na linha em que você está.</p>
+  <div id="trapsGallery"></div>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: TREINO ==================== -->
+<section class="page" id="pg-train">
+<div class="card"><h2>🏋️ Plano de treino personalizado</h2>
+  <div class="row" style="margin-bottom:10px"><button class="primary" id="planGen">Gerar / atualizar plano</button>
+    <button class="ghost" onclick="window.print()">🖨 Imprimir plano</button></div>
+  <div id="planOut"><p style="color:var(--mut)">Analise um jogador na página Início e clique em Gerar plano — as tarefas saem dos seus números reais (piores aberturas, armadilhas, relógio, tilt e fases).</p></div>
+</div>
+<div class="card"><h2>📖 Treinador de aberturas (contra a teoria)</h2>
+  <p style="color:var(--mut);font-size:.9rem;margin-bottom:10px">Você joga a sua cor; o rival responde com lances reais da base de mestres. Cada lance seu é comparado com a teoria: ✅ entre os 3 mais jogados, 🟡 jogável, ❌ fora do livro. Treine até fixar o repertório.</p>
+  <div class="row" style="margin-bottom:12px">
+    <div><label>Suas peças</label><select id="trColor"><option value="w">Brancas</option><option value="b">Pretas</option></select></div>
+    <div><button class="primary" id="trStart">Iniciar treino</button></div>
+    <div style="align-self:center" id="trScore"></div>
+  </div>
+  <div id="trBoard" class="cboard"></div>
+  <div id="trStatus" style="margin-top:10px;font-size:.92rem;color:var(--mut)">Clique em Iniciar treino.</div>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: TABULEIRO ==================== -->
+<section class="page" id="pg-board">
+<div class="card" id="anlCard"><h2>Tabuleiro de análise ♟</h2>
+  <div class="row" style="margin-bottom:10px">
+    <div style="min-width:280px;flex:1"><label>Partida analisada (últimas 100)</label><select id="anlGame" style="width:100%"></select></div>
+    <div><button class="primary" id="anlLoad">Carregar partida</button></div>
+    <div style="min-width:220px;flex:1"><label>Ou cole FEN / lances PGN</label><input id="anlFen" placeholder="ex.: 1.e4 e5 2.Nf3 …" style="width:100%"></div>
+    <div><button class="ghost" id="anlLoadFen">Carregar</button></div>
+  </div>
+  <div class="row" style="margin-bottom:12px">
+    <button class="ghost" id="anlStart">⏮</button><button class="ghost" id="anlPrev">◀</button>
+    <button class="ghost" id="anlNext">▶</button><button class="ghost" id="anlEnd">⏭</button>
+    <button class="ghost" id="anlFlip">🔄 Girar</button>
+    <button class="primary" id="anlEval">⚙ Avaliar posição</button>
+    <span id="evalTxt" style="align-self:center"></span>
+  </div>
+  <div id="aboard" class="cboard"></div>
+  <div id="anlStatus">Carregue uma partida, cole lances/FEN, ou use as setas do teclado.</div>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: BOT ==================== -->
+<section class="page" id="pg-bot">
+<div class="card" id="botCard"><h2>Jogue contra o clone 🤖</h2>
+  <div id="botinfo">Analise um jogador na página Início para calibrar a força automaticamente — ou ajuste manualmente abaixo.</div>
+  <div class="row" style="margin-bottom:12px">
+    <div><label>Força (Elo aprox.)</label><input type="range" id="botElo" min="400" max="2800" step="50" value="1200" style="width:170px"><span id="botEloV" style="margin-left:8px">1200</span></div>
+    <div><label>Suas peças</label><select id="botColor"><option value="w">Brancas</option><option value="b">Pretas</option></select></div>
+    <div><button class="primary" id="botStart">Nova partida</button></div>
+    <div><button class="ghost" id="botUndo">↩ Desfazer</button></div>
+    <div><button class="ghost" id="botHint">💡 Dica</button></div>
+  </div>
+  <div id="board" class="cboard"></div>
+  <div id="botstatus" style="margin-top:8px;font-size:.95rem"></div>
+  <div id="moves"></div>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: LEITOR PGN ==================== -->
+<section class="page" id="pg-pgn">
+<div class="card"><h2>📖 Leitor de PGN</h2>
+  <div class="row" style="margin-bottom:10px">
+    <div><label>Arquivo .pgn</label><input type="file" id="pgnFileIn" accept=".pgn,.txt"></div>
+    <div><button class="primary" id="pgnLoadBtn">Carregar</button></div>
+  </div>
+  <label>Ou cole o PGN aqui (aceita várias partidas)</label>
+  <textarea id="pgnText" rows="5" style="width:100%" placeholder='[Event "..."]&#10;1.e4 e5 2.Nf3 ...'></textarea>
+</div>
+<div class="card"><h2>Partidas carregadas</h2><div id="pgnList"><p style="color:var(--mut)">Nenhum PGN carregado.</p></div></div>
+</section>
+
+<!-- ==================== PÁGINA: LEITOR PDF ==================== -->
+<section class="page" id="pg-pdf">
+<div class="card"><h2>📕 Leitor de PDF (livros e apostilas de xadrez)</h2>
+  <div class="row" style="margin-bottom:12px">
+    <div><label>Arquivo .pdf</label><input type="file" id="pdfFileIn" accept=".pdf"></div>
+    <button class="ghost" id="pdfPrev">◀ Página</button>
+    <span id="pdfPage" style="align-self:center;color:var(--mut)">— / —</span>
+    <button class="ghost" id="pdfNext">Página ▶</button>
+  </div>
+  <div id="pdfStatus" style="color:var(--mut);font-size:.9rem;margin-bottom:10px">Abra um PDF para ler aqui dentro — ideal para estudar um livro com o tabuleiro de análise aberto em outra aba do menu.</div>
+  <canvas id="pdfCanvas"></canvas>
+</div>
+</section>
+
+<!-- ==================== PÁGINA: HISTÓRICO ==================== -->
+<section class="page" id="pg-hist">
+<div class="card"><h2>📜 Histórico de análises de jogador <span class="chip" onclick="histClear('an')">🗑 limpar</span></h2><div id="histAn"></div></div>
+<div class="card"><h2>🎯 Histórico de análises de precisão <span class="chip" onclick="histClear('prec')">🗑 limpar</span></h2><div id="histPrec"></div></div>
+<div class="card"><h2>📖 PGNs salvos <span class="chip" onclick="histClear('pgn')">🗑 limpar</span></h2><div id="histPgn"></div></div>
+<div class="card"><h2>📕 PDFs abertos <span class="chip" onclick="histClear('pdf')">🗑 limpar</span></h2><div id="histPdf"></div></div>
+</section>
+
+<footer>ChessLens — 100% no navegador · APIs públicas do Chess.com, Lichess e base de mestres · Sem contas, sem custos.</footer>
+</div>
+
+<script src="core.js"></script>
+<script src="features.js"></script>
+</body>
+</html>
